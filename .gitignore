@@ -1,0 +1,23 @@
+# Gradle
+.gradle/
+build/
+
+# Android Studio
+.idea/
+*.iml
+*.apk
+*.ap_
+*.dex
+*.class
+*.jar
+*.log
+*.png
+
+# Local configuration
+local.properties
+
+# macOS
+.DS_Store
+
+# JVM heap dumps
+*.hprof
