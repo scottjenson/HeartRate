@@ -4,12 +4,14 @@ import android.graphics.Typeface
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -36,6 +38,7 @@ fun HeartRateScreen(
     heartRate: Int?,
     availability: String?,
     isAmbient: Boolean,
+    onQuit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -93,6 +96,18 @@ fun HeartRateScreen(
                     color = Color.Gray,
                 )
             }
+        }
+
+        if (!isAmbient) {
+            Text(
+                text = "✕",
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp)
+                    .clickable(onClick = onQuit),
+                style = TextStyle(fontSize = 13.sp),
+                color = Color(0xFF555555),
+            )
         }
     }
 }

@@ -2,6 +2,7 @@ package org.jenson.heartrate
 
 import android.Manifest
 import android.content.Intent
+import android.content.LocusId
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -42,10 +43,21 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setShowWhenLocked(true)
         setTurnScreenOn(true)
+        setLocusContext(LocusId("hr_session"), null)
         lifecycle.addObserver(AmbientLifecycleObserver(this, ambientCallback))
         startForegroundService(Intent(this, HeartRateService::class.java))
         requestSensorPermission()
-        setContent { MaterialTheme { HeartRateApp(isAmbient = isAmbient) } }
+        setContent {
+            MaterialTheme {
+                HeartRateApp(
+                    isAmbient = isAmbient,
+                    onQuit = {
+                        stopService(Intent(this@MainActivity, HeartRateService::class.java))
+                        finish()
+                    }
+                )
+            }
+        }
     }
 
     override fun onResume() {
@@ -74,7 +86,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun HeartRateApp(isAmbient: Boolean) {
+fun HeartRateApp(isAmbient: Boolean, onQuit: () -> Unit) {
     val viewModel: HeartRateViewModel = viewModel(
         factory = HeartRateViewModel.factory(LocalContext.current)
     )
@@ -90,6 +102,7 @@ fun HeartRateApp(isAmbient: Boolean) {
         heartRate = heartRate,
         availability = availability?.name,
         isAmbient = isAmbient,
+        onQuit = onQuit,
         modifier = Modifier.fillMaxSize(),
     )
 }

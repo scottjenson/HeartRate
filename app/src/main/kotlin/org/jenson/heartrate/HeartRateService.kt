@@ -11,10 +11,12 @@ import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.LocusIdCompat
 import androidx.wear.ongoing.OngoingActivity
 
 private const val CHANNEL_ID = "heart_rate_channel"
-const val NOTIFICATION_ID = 1
+private const val LOCUS_ID    = "hr_session"
+const val NOTIFICATION_ID     = 1
 
 class HeartRateService : Service() {
 
@@ -30,6 +32,12 @@ class HeartRateService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        @Suppress("DEPRECATION")
+        stopForeground(true)
+    }
 
     private fun buildNotification(): Notification {
         val nm = getSystemService(NotificationManager::class.java)
@@ -47,17 +55,21 @@ class HeartRateService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val icon = Icon.createWithResource(this, R.drawable.ic_heart)
+        val icon    = Icon.createWithResource(this, R.drawable.ic_heart)
+        val locusId = LocusIdCompat(LOCUS_ID)
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_heart)
             .setContentTitle("Heart Rate")
             .setContentIntent(tapIntent)
             .setOngoing(true)
+            .setCategory("workout")
+            .setLocusId(locusId)
 
         OngoingActivity.Builder(applicationContext, NOTIFICATION_ID, builder)
             .setStaticIcon(icon)
             .setTouchIntent(tapIntent)
+            .setLocusId(locusId)
             .build()
             .apply(applicationContext)
 
