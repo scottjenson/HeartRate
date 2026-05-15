@@ -17,6 +17,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.HeartRate">
 
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="true" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -35,6 +39,15 @@
             android:name=".HeartRateService"
             android:foregroundServiceType="health"
             android:exported="false" />
+
+        <service
+            android:name=".HeartRateTileService"
+            android:exported="true"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+        </service>
 
     </application>
 

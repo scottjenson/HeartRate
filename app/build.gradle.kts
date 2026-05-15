@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace = "org.jenson.heartrate"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "org.jenson.heartrate"
         minSdk = 30
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
     }
@@ -52,7 +52,7 @@ dependencies {
     implementation("androidx.wear:wear-ongoing:1.0.0")
 
     // Activity
-    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.activity:activity-compose:1.13.0")
 
     // Health Services API
     implementation("androidx.health:health-services-client:1.1.0-rc02")
@@ -61,4 +61,8 @@ dependencies {
     // Lifecycle + ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.0")
+
+    // Wear Tiles
+    implementation("androidx.wear.tiles:tiles:1.4.0")
+    implementation("androidx.wear.protolayout:protolayout-material:1.2.0")
 }

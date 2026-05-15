@@ -1,6 +1,7 @@
 package org.jenson.heartrate
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.LocusId
 import android.content.pm.PackageManager
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @SuppressLint("InvalidFragmentVersionForActivityResult")
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { /* permissions map — sensor starts automatically via ViewModel */ }
