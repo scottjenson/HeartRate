@@ -10,10 +10,10 @@ A minimal Wear OS 3.0+ app showing the device's heart rate as a large number. Si
 
 - **UI Framework**: Jetpack Compose for Wear (not XML layouts)
 - **Theme**: MUST use `androidx.wear.compose.material3.MaterialTheme` wrapper — provides WearOS rounded font and correct color system. Do not remove it.
-- **Sensor API**: `MeasureClient` from Health Services (direct device sensors, not phone companion)
+- **Sensor API**: `ExerciseClient` from Health Services (direct device sensors, not phone companion). Chosen over `MeasureClient` because `MeasureClient` stops recording in ambient — the value would be ~1 min stale on wrist-raise. `ExerciseClient` keeps the sensor recording continuously through ambient, so the reading is always fresh. Cost: each session writes a workout entry to the user's health data.
 - **Min SDK**: API 30 (Wear OS 3.0+), compileSdk/targetSdk = 36
 - **State Management**: ViewModel + StateFlow
-- **Ambient Mode**: `AmbientLifecycleObserver` handles active/low-power display states
+- **Ambient Mode**: `AmbientLifecycleObserver` handles active/low-power display states. NOTE: the always-on (ambient) display is repainted by the system ~once per minute (burn-in/power); there is no supported way to get faster (e.g. 5s) updates in ambient. Pro fitness apps accept this too. "Fake ambient" (`FLAG_KEEP_SCREEN_ON` + manual dimming to stay interactive) was tried and rejected — it's a fragile OS-fighting hack and the OS still throttled sensor delivery. Full-rate updates only happen when interactive (wrist raised).
 - **Foreground Service**: Required to keep app alive; uses `foregroundServiceType="health"`
 - **Ongoing Activity**: Keeps a chip on the watch face while app is running
 
@@ -47,9 +47,14 @@ HeartRate/
 - Starts/stops `HeartRateService` with Activity lifecycle
 
 ### HeartRateViewModel.kt
-- `getCapabilitiesAsync()` + 500ms delay before `registerMeasureCallback()` — avoids race condition
+- Uses `ExerciseClient` running an `ExerciseType.WORKOUT` session (HR only, GPS off, auto-pause off)
+- Startup: `getCapabilitiesAsync()` confirms `typeToCapabilities[WORKOUT]` supports `HEART_RATE_BPM`
+- **Existing-session guard** (only one exercise allowed device-wide): `getCurrentExerciseInfoAsync()` before start —
+  `OWNED_EXERCISE_IN_PROGRESS` (orphan from a crash) → `endExerciseAsync()` then restart;
+  `OTHER_APP_IN_PROGRESS` (e.g. a running workout app) → surface `UNAVAILABLE`, don't fight it; else start clean
+- Reads HR from `ExerciseUpdate.latestMetrics.getData(HEART_RATE_BPM)` via `ExerciseUpdateCallback`
 - Ambient throttle: updates at most every 10s when `isAmbient = true`, full rate otherwise
-- Cleans up callback in `onCleared()`
+- `endExerciseAsync()` in `onCleared()` — clean teardown so no phantom workout keeps recording
 
 ### HeartRateScreen.kt
 - Heart rate drawn with native `android.graphics.Paint` (not Compose `Text`) — required for

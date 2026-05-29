@@ -1,26 +1,28 @@
 package org.jenson.heartrate
 
 import android.content.Context
+import androidx.health.services.client.ExerciseUpdateCallback
 import androidx.health.services.client.HealthServices
-import androidx.health.services.client.MeasureCallback
 import androidx.health.services.client.data.Availability
-import androidx.health.services.client.data.DataPointContainer
 import androidx.health.services.client.data.DataType
 import androidx.health.services.client.data.DataTypeAvailability
-import androidx.health.services.client.data.DeltaDataType
+import androidx.health.services.client.data.ExerciseCapabilities
+import androidx.health.services.client.data.ExerciseConfig
+import androidx.health.services.client.data.ExerciseInfo
+import androidx.health.services.client.data.ExerciseLapSummary
+import androidx.health.services.client.data.ExerciseTrackedStatus
+import androidx.health.services.client.data.ExerciseType
+import androidx.health.services.client.data.ExerciseUpdate
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewModelScope
 import com.google.common.util.concurrent.FutureCallback
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.MoreExecutors
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 
 class HeartRateViewModel(context: Context) : ViewModel() {
-    private val measureClient = HealthServices.getClient(context.applicationContext).measureClient
+    private val exerciseClient = HealthServices.getClient(context.applicationContext).exerciseClient
 
     private val _heartRate = MutableStateFlow<Int?>(null)
     val heartRate: StateFlow<Int?> = _heartRate
@@ -36,15 +38,15 @@ class HeartRateViewModel(context: Context) : ViewModel() {
         if (!ambient) lastAmbientUpdateMs = 0L
     }
 
-    private val heartRateCallback = object : MeasureCallback {
-        override fun onAvailabilityChanged(dataType: DeltaDataType<*, *>, availability: Availability) {
-            if (availability is DataTypeAvailability) {
-                _availability.value = availability
-            }
+    private val exerciseCallback = object : ExerciseUpdateCallback {
+        override fun onRegistered() { }
+
+        override fun onRegistrationFailed(throwable: Throwable) {
+            _availability.value = DataTypeAvailability.UNAVAILABLE
         }
 
-        override fun onDataReceived(data: DataPointContainer) {
-            val heartRateDataPoints = data.getData(DataType.HEART_RATE_BPM)
+        override fun onExerciseUpdateReceived(update: ExerciseUpdate) {
+            val heartRateDataPoints = update.latestMetrics.getData(DataType.HEART_RATE_BPM)
             if (heartRateDataPoints.isNotEmpty()) {
                 val now = System.currentTimeMillis()
                 if (!isAmbient || now - lastAmbientUpdateMs >= 10_000L) {
@@ -53,39 +55,94 @@ class HeartRateViewModel(context: Context) : ViewModel() {
                 }
             }
         }
+
+        override fun onLapSummaryReceived(lapSummary: ExerciseLapSummary) { }
+
+        override fun onAvailabilityChanged(dataType: DataType<*, *>, availability: Availability) {
+            if (availability is DataTypeAvailability) {
+                _availability.value = availability
+            }
+        }
     }
 
     init {
-        checkCapabilitiesThenRegister()
+        checkCapabilitiesThenStart()
     }
 
-    private fun checkCapabilitiesThenRegister() {
+    private fun checkCapabilitiesThenStart() {
         Futures.addCallback(
-            measureClient.getCapabilitiesAsync(),
-            object : FutureCallback<androidx.health.services.client.data.MeasureCapabilities> {
-                override fun onSuccess(caps: androidx.health.services.client.data.MeasureCapabilities) {
-                    if (DataType.HEART_RATE_BPM in caps.supportedDataTypesMeasure) registerCallback()
+            exerciseClient.getCapabilitiesAsync(),
+            object : FutureCallback<ExerciseCapabilities> {
+                override fun onSuccess(caps: ExerciseCapabilities) {
+                    val typeCaps = caps.typeToCapabilities[ExerciseType.WORKOUT]
+                    if (typeCaps != null && DataType.HEART_RATE_BPM in typeCaps.supportedDataTypes) {
+                        guardExistingThenStart()
+                    } else {
+                        _availability.value = DataTypeAvailability.UNAVAILABLE
+                    }
                 }
-                override fun onFailure(t: Throwable) { }
+                override fun onFailure(t: Throwable) {
+                    _availability.value = DataTypeAvailability.UNAVAILABLE
+                }
             },
             MoreExecutors.directExecutor()
         )
     }
 
-    private fun registerCallback() {
-        viewModelScope.launch {
-            delay(500)
-            try {
-                measureClient.registerMeasureCallback(DataType.HEART_RATE_BPM, heartRateCallback)
-            } catch (e: Exception) {
-                _availability.value = DataTypeAvailability.UNAVAILABLE
-            }
-        }
+    /** Only one exercise may run device-wide; handle a stale or foreign session before starting. */
+    private fun guardExistingThenStart() {
+        Futures.addCallback(
+            exerciseClient.getCurrentExerciseInfoAsync(),
+            object : FutureCallback<ExerciseInfo> {
+                override fun onSuccess(info: ExerciseInfo) {
+                    when (info.exerciseTrackedStatus) {
+                        ExerciseTrackedStatus.OTHER_APP_IN_PROGRESS ->
+                            // Another app (e.g. a running workout) holds the sensor; don't fight it.
+                            _availability.value = DataTypeAvailability.UNAVAILABLE
+                        ExerciseTrackedStatus.OWNED_EXERCISE_IN_PROGRESS ->
+                            // Orphan from a prior run/crash — end it, then start fresh.
+                            Futures.addCallback(
+                                exerciseClient.endExerciseAsync(),
+                                object : FutureCallback<Void> {
+                                    override fun onSuccess(result: Void?) = startExercise()
+                                    override fun onFailure(t: Throwable) = startExercise()
+                                },
+                                MoreExecutors.directExecutor()
+                            )
+                        else -> startExercise()
+                    }
+                }
+                override fun onFailure(t: Throwable) {
+                    // Couldn't read current state; attempt a normal start anyway.
+                    startExercise()
+                }
+            },
+            MoreExecutors.directExecutor()
+        )
+    }
+
+    private fun startExercise() {
+        exerciseClient.setUpdateCallback(exerciseCallback)
+        val config = ExerciseConfig.builder(ExerciseType.WORKOUT)
+            .setDataTypes(setOf(DataType.HEART_RATE_BPM))
+            .setIsAutoPauseAndResumeEnabled(false)
+            .setIsGpsEnabled(false)
+            .build()
+        Futures.addCallback(
+            exerciseClient.startExerciseAsync(config),
+            object : FutureCallback<Void> {
+                override fun onSuccess(result: Void?) { }
+                override fun onFailure(t: Throwable) {
+                    _availability.value = DataTypeAvailability.UNAVAILABLE
+                }
+            },
+            MoreExecutors.directExecutor()
+        )
     }
 
     override fun onCleared() {
         super.onCleared()
-        measureClient.unregisterMeasureCallbackAsync(DataType.HEART_RATE_BPM, heartRateCallback)
+        exerciseClient.endExerciseAsync()
     }
 
     companion object {
